@@ -48,6 +48,7 @@ TEXT_COLOR_UNLOCKED = (0, 100, 0)
 TEXT_COLOR_NOT_UPLOADED = 'red'
 TEXT_COLOR_LIGHT = (255, 255, 255)
 BANNER_COLOR = (50, 75, 100)
+DIGIT_BG_COLOR = (150, 175, 200)
 HOVER_BG_COLOR = (170, 170, 170)
 BACKGROUND_COLOR = (190, 190, 190)
 FPS = 60
@@ -170,13 +171,19 @@ class ErrorScreen:
 class MainMenu:
     def __init__(self, state):
         self.state = state
+        self.fetch_button = Button(["Fetch uploaded"], (320, 100),
+                                   [FONT], TEXT_COLOR, TEXT_COLOR_ACTIVE, hover_bg_color=HOVER_BG_COLOR)
         self.start_button = Button(["Synchronize Achievements"], (320, 170),
                                    [FONT], TEXT_COLOR, TEXT_COLOR_ACTIVE, hover_bg_color=HOVER_BG_COLOR)
-        self.hardcore_button = Button(["Enable Hardcore Mode"], (320, 240),
+        self.manual_button = Button(["Manual Cheevo ID entry"], (320, 240),
                                   [FONT], TEXT_COLOR, TEXT_COLOR_ACTIVE, hover_bg_color=HOVER_BG_COLOR)
-        self.exit_button = Button(["Exit"], (320, 310),
+        self.hardcore_button = Button(["Enable Hardcore Mode"], (320, 310),
                                   [FONT], TEXT_COLOR, TEXT_COLOR_ACTIVE, hover_bg_color=HOVER_BG_COLOR)
-        self.buttons = [self.start_button,
+        self.exit_button = Button(["Exit"], (320, 380),
+                                  [FONT], TEXT_COLOR, TEXT_COLOR_ACTIVE, hover_bg_color=HOVER_BG_COLOR)
+        self.buttons = [self.fetch_button,
+                        self.start_button,
+                        self.manual_button,
                         self.hardcore_button,
                         self.exit_button]
         self.selected_button_index = 0
@@ -197,10 +204,9 @@ class MainMenu:
                     self.selected_button_index = max(0, self.selected_button_index - 1)
                 elif event.key in [pygame.K_RETURN, pygame.K_a]:
                     if self.buttons[self.selected_button_index] == self.start_button:
-                        print(f'successfully uploaded achievements:')
-                        print(self.state.get_uploaded_achievements(force_reload=True))
-                        self.state.unmatched_achievements = [x for x in self.state.get_unlocked_achievements() if
-                                                             x not in self.state.get_uploaded_achievements()]
+                        # print('successfully uploaded achievements:')
+                        # print(self.state.get_uploaded_achievements(force_reload=False))
+                        self.state.unmatched_achievements = self.state.get_unmatched_achievements(increments=3)
                         self.state.current_state = "SYNC_CHEEVOS"
                         return
                     elif self.buttons[self.selected_button_index] == self.hardcore_button:
@@ -211,6 +217,15 @@ class MainMenu:
                     elif self.buttons[self.selected_button_index] == self.exit_button:
                         pygame.quit()
                         sys.exit()
+                    elif self.buttons[self.selected_button_index] == self.fetch_button:
+                        self.fetch_button.update_text(['Fetching...'])
+                        self.state.get_uploaded_achievements()
+                        self.state.get_unlocked_achievements()
+                        self.state.unmatched_achievements = self.state.get_unmatched_achievements(increments=3)
+                        if len(self.state.unmatched_achievements) > 0:
+                            self.fetch_button.update_text([f'unlocked: {len(self.state.get_unlocked_achievements())} | unmatched: {len(self.state.unmatched_achievements)}'])
+                    elif self.buttons[self.selected_button_index] == self.manual_button:
+                        self.state.current_state = "MANUAL_ENTRY"
 
     def render(self):
         for i in range(len(self.buttons)):
@@ -220,6 +235,51 @@ class MainMenu:
         pygame.draw.rect(SCREEN, BANNER_COLOR, pygame.Rect((0, 425), (640, 55)))
         render_text("Use DPAD to navigate", (15, 435), FONT_SMALL, TEXT_COLOR_LIGHT)
         render_text("A to select", (15, 455), FONT_SMALL, TEXT_COLOR_LIGHT)
+
+
+class ManualEntry:
+    def __init__(self, state):
+        n_digits = 7
+        spacing = 50
+        self.state = state
+        self.digits = [Button(["0"], (180 + x, 330), [FONT], TEXT_COLOR, 'red')
+                       for x in range(0, spacing * n_digits, spacing)]
+        self.selected_digit = n_digits - 1
+
+    def handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key in [pygame.K_UP]:
+                    self.digits[self.selected_digit].update_text([str((int(self.digits[self.selected_digit].text[0]) + 1) % 10)])
+                elif event.key in [pygame.K_DOWN]:
+                    self.digits[self.selected_digit].update_text([str((int(self.digits[self.selected_digit].text[0]) - 1) % 10)])
+                elif event.key in [pygame.K_LEFT]:
+                    if self.selected_digit > 0:
+                        self.selected_digit -= 1
+                elif event.key in [pygame.K_RIGHT]:
+                    if self.selected_digit < len(self.digits) - 1:
+                        self.selected_digit += 1
+                elif event.key in [pygame.K_RETURN, pygame.K_a]:
+                    cheevo_id = ''.join([digit.text[0] for digit in self.digits])
+                    self.state.manual_ids.append(cheevo_id)
+                    self.state.unmatched_achievements.append(cheevo_id)
+                    self.state.current_state = "SYNC_CHEEVOS"
+
+    def render(self):
+        pygame.draw.rect(SCREEN, BANNER_COLOR, pygame.Rect((0, 0), (640, 50)))
+        pygame.draw.rect(SCREEN, DIGIT_BG_COLOR, pygame.Rect((100, 300), (440, 70)))
+
+        for i in range(len(self.digits)):
+            self.digits[i].set_hovering(self.selected_digit == i)
+            self.digits[i].update(SCREEN)
+
+        pygame.draw.rect(SCREEN, BANNER_COLOR, pygame.Rect((0, 425), (640, 55)))
+        render_text("Use DPAD enter ID", (15, 435), FONT_SMALL, TEXT_COLOR_LIGHT)
+        render_text("A to confirm", (15, 455), FONT_SMALL, TEXT_COLOR_LIGHT)
+
 
 
 class WarnHardcore:
@@ -508,8 +568,9 @@ class ListAchievements:
             render_text(f"{self.selected_button_index + 1}/{len(self.state.get_uploaded_achievements())}", (320, 450),
                         FONT, TEXT_COLOR_LIGHT, centered=True)
             render_text("Use DPAD to navigate", (15, 435), FONT_SMALL, TEXT_COLOR_LIGHT)
-        except(Exception,):
-            render_text('RetroAchievements server is down', (10, 10), FONT, TEXT_COLOR_LIGHT)
+        except Exception as e:
+            render_text('RetroAchievements server may be down', (10, 10), FONT, TEXT_COLOR_LIGHT)
+            render_text(str(e), (10, 30), FONT, TEXT_COLOR_LIGHT)
             pygame.draw.rect(SCREEN, BANNER_COLOR, pygame.Rect((0, 425), (640, 55)))
 
         render_text("B to return", (15, 455), FONT_SMALL, TEXT_COLOR_LIGHT)
@@ -522,9 +583,13 @@ class GlobalState:
         self.icon_cache = {}
         self.icon_cache_locked = {}
         self.newly_unlocked = []
+        self.all_games = None
         self.unlocked_achievements = None
-        self.uploaded_achievements = None
+        self.uploaded_achievements = {}
+        self.requested_games = {}
         self.unmatched_dict = {}
+        self.unmatched_achievements = []
+        self.manual_ids = []
         self.game_dict_cache = {}
         self.debug_string = 'Logging in...'
         self.username = None
@@ -544,6 +609,7 @@ class GlobalState:
         self.states["SCROLL_CHEEVOS"] = ScrollCheevos(self)
         self.states["SYNC_CHEEVOS"] = SyncAchievements(self)
         self.states["LIST_CHEEVOS"] = ListAchievements(self)
+        self.states["MANUAL_ENTRY"] = ManualEntry(self)
 
     def print_error(self, msg):
         print(msg)
@@ -590,7 +656,7 @@ class GlobalState:
 
     def get_badgenum_from_cid(self, cheevo_id):
         if cheevo_id in self.get_uploaded_achievements():
-            cheevo_badge = self.get_uploaded_achievements()[cheevo_id]["BadgeURL"].split('/')[-1].split('.')[-2]
+            cheevo_badge = self.get_uploaded_achievements()[cheevo_id]["BadgeName"].split('/')[-1].split('.')[-2]
         else:
             ach_title = self.get_unmatched_info(cheevo_id)["Achievement"]["Title"]
             game_title = self.get_unmatched_info(cheevo_id)["Game"]["Title"]
@@ -688,74 +754,138 @@ class GlobalState:
                 url = 'https://retroachievements.org/API/API_GetUserRecentlyPlayedGames.php'
                 mheaders = {'User-Agent': '1.2.0'}
                 all_games = []
-                params = {'u': self.get_username(), 'y': self.api_key, 'c': count, 'o': offset}
                 while True:
+                    params = {'u': self.get_username(), 'y': self.api_key, 'c': count, 'o': offset}
                     response = requests.get(url, params=params, headers=mheaders)
-                    games = response.json()
-                    if not games:
+                    raw_games = response.json()
+                    if not raw_games:
                         break
+                    games = [game for game in raw_games if 'GameID' in game]
                     all_games.extend(games)
                     if len(games) < count:
                         break
                     offset += count
                     if verbose:
+                        pygame.draw.rect(SCREEN, BACKGROUND_COLOR, pygame.Rect((79, 79), (600, 50)))
                         render_text(f'Found {len(all_games)} games', (80, 80), FONT, TEXT_COLOR_ACTIVE)
                         pygame.display.update()
                         CLOCK.tick(FPS)
                     time.sleep(0.1)
+                if verbose:
+                    pygame.draw.rect(SCREEN, BACKGROUND_COLOR, pygame.Rect((79, 79), (600, 50)))
+                    render_text(f'Found {len(all_games)} games', (80, 80), FONT, TEXT_COLOR_ACTIVE)
+                    pygame.display.update()
+                    CLOCK.tick(FPS)
                 self.all_games = all_games                
             except Exception as e:
                 self.print_error(["Error getting recently played games", f"{str(e)}"])
                 self.all_games = []
         return self.all_games
 
-    def get_uploaded_achievements(self, force_reload=False):
-        if self.uploaded_achievements is None or force_reload:
-            try:
-                count = 50
-                offset = 0
-                url = 'https://retroachievements.org/API/API_GetUserRecentlyPlayedGames.php'
-                progress_url = f"https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php"
-
-                mheaders = {'User-Agent': '1.2.0'}
-                all_achievements = {}
-                params = {'u': self.get_username(), 'y': self.api_key, 'c': count, 'o': offset}
-                while True:
-                    response = requests.get(url, params=params, headers=mheaders)
-                    games = response.json()
-                    if not games:
+    def get_unmatched_achievements(self, increments=10, verbose=True):
+        try:
+            self.unmatched_dict = {}
+            unlocked_achievements = self.get_unlocked_achievements()
+            uploaded_achievements = self.get_uploaded_achievements(verbose=True, limit=1)
+            unmatched_achievements = []
+            for achievement in unlocked_achievements:
+                if achievement not in uploaded_achievements:
+                    unmatched_achievements.append(achievement)
+            
+            nskip = 0
+            while len(unmatched_achievements) > 0:
+                next_unmatched_info = self.get_unmatched_info(unmatched_achievements[nskip])
+                next_game_id = next_unmatched_info["Game"]["ID"]
+                if next_game_id in self.requested_games:
+                    nskip += 1
+                    if nskip >= len(unmatched_achievements):
                         break
-                    for game in games:
-                        game_id = game.get('GameID')
-                        if not game_id:
-                            continue
+                    continue
+
+                uploaded_achievements = self.get_uploaded_achievements(verbose=True, game_ids=[next_game_id])
+                unmatched_achievements = []
+                for achievement in unlocked_achievements:
+                    if achievement not in uploaded_achievements:
+                        unmatched_achievements.append(achievement)
+                if verbose:
+                    pygame.draw.rect(SCREEN, BACKGROUND_COLOR, pygame.Rect((79, 199), (600, 50)))
+                    n_found = len(unlocked_achievements) - len(unmatched_achievements)
+                    render_text(f'Checking Sync Status: {n_found}/{len(unlocked_achievements)}', (80, 200), FONT, TEXT_COLOR_ACTIVE)
+                    pygame.display.update()
+                    CLOCK.tick(FPS)
+                    
+            self.unmatched_achievements = unmatched_achievements + self.manual_ids
+            for achievement in self.unmatched_achievements:
+                self.unmatched_dict[achievement] = self.get_unmatched_info(achievement)
+
+        except Exception as e:
+            self.print_error(["Error getting unmatched achievements", f"{str(e)}"])
+            self.unmatched_achievements = self.manual_ids
+
+        return self.unmatched_achievements
+
+    def get_uploaded_achievements(self, force_reload=False, verbose=False, limit=1, game_ids=None):
+        if game_ids is None:
+            games = self.get_played_games(force_reload=force_reload, verbose=False)
+            game_ids = [game['GameID'] for game in games if 'GameID' in game]
+        if set(game_ids) not in set(self.requested_games) or force_reload:
+            try:
+                progress_url = "https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php"
+                mheaders = {'User-Agent': '1.2.0'}
+                all_achievements = self.uploaded_achievements
+                n_requests = 0
+                for game_id in game_ids:
+                    if game_id in self.requested_games:
+                        print(f'Game {game_id} already requested, skipping')
+                        continue
+                    
+                    canskip = False
+                    for game in self.all_games:
+                        if game['GameID'] == game_id:
+                            if game.get('NumAchieved', 1) == 0:
+                                canskip = True
+                            break
+                    if canskip:
+                        self.requested_games[game_id] = True
+                    else:
                         prog_params = {'u': self.get_username(), 'y': self.api_key, 'g': game_id}
                         progress_response = requests.get(progress_url, headers=mheaders, params=prog_params)
                         progress_data = progress_response.json()
-
-                        if "Achievements" in progress_data:
-                            achieved = {
-                                aid: ainfo for aid, ainfo in progress_data["Achievements"].items()
-                                if ainfo.get("DateEarned")
-                            }
-                            if achieved:
-                                all_achievements[game_id] = achieved
-                        time.sleep(0.01)  # don't bang the API too hard
-
-                    if len(games) < count:
-                        break
-                    offset += count
-                    time.sleep(0.1)
+                        print(game_id)
+                        print(progress_data)
+                        for aid_str, achievement in progress_data.get("Achievements", {}).items():
+                            if achievement.get("DateEarned") or achievement.get("DateEarnedHardcore"):
+                                aid = int(achievement["ID"])
+                                all_achievements[aid] = achievement
+                                all_achievements[aid]['GameTitle'] = progress_data['Title']
+                        self.requested_games[game_id] = True
+                        n_requests += 1
+                    
+                        if verbose:
+                            pygame.draw.rect(SCREEN, BACKGROUND_COLOR, pygame.Rect((79, 149), (600, 50)))
+                            render_text(f'Found {len(all_achievements)} achievements', (80, 150), FONT, TEXT_COLOR_ACTIVE)
+                            pygame.display.update()
+                            CLOCK.tick(FPS)
+                        if n_requests >= limit:
+                            print(f'Reached limit of {limit} requests, stopping')
+                            break
+                        time.sleep(0.1)  # don't bang the API too hard
+                    
+                if verbose:
+                    pygame.draw.rect(SCREEN, BACKGROUND_COLOR, pygame.Rect((79, 149), (600, 50)))
+                    render_text(f'Found {len(all_achievements)} achievements', (80, 150), FONT, TEXT_COLOR_ACTIVE)
+                    pygame.display.update()
+                    CLOCK.tick(FPS)
                 self.uploaded_achievements = all_achievements                
             except Exception as e:
                 self.print_error(["Error getting unlocked achievements", f"{str(e)}"])
-                self.uploaded_achievements = []
+                self.uploaded_achievements = {}
 
         return self.uploaded_achievements
 
 
     def get_uploaded_achievements_legacy(self, force_reload=False):
-        if self.uploaded_achievements is None or force_reload:
+        if len(self.uploaded_achievements) == 0 or force_reload:
             try:
                 url = 'https://retroachievements.org/API/API_GetUserRecentAchievements.php'
                 params = {'u': self.get_username(), 'y': self.api_key, 'm': 10000000}
@@ -763,7 +893,7 @@ class GlobalState:
                 print(response.text)
                 if 'Service Temporarily Unavailable' in response.text:
                     self.print_error(["RetroAchievements API seems to be down"])
-                    self.uploaded_achievements = []
+                    self.uploaded_achievements = {}
                     return self.uploaded_achievements
                 achievements = json.loads(response.text)
                 cheevo_ids = [x['AchievementID'] for x in achievements]
@@ -820,9 +950,9 @@ def main():
     print(state.get_token())
     
     state.played_games = state.get_played_games(force_reload=True, verbose=True)
+    state.uploaded_achievements = state.get_uploaded_achievements(force_reload=True, verbose=True)
 
-    state.unmatched_achievements = [x for x in state.get_unlocked_achievements() if
-                                    x not in state.get_uploaded_achievements()]
+    # state.unmatched_achievements = state.get_unmatched_achievements(increments=3, verbose=True)
 
     while True:
         SCREEN.fill(BACKGROUND_COLOR)
