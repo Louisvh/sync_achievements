@@ -28,6 +28,7 @@ SCREENSHOTS_DIRECTORY = "/userdata/screenshots/"
 # batocera.conf is ignored if the overrides above are used
 BATOCERA_CONF_LOCATION = '/userdata/system/batocera.conf'
 
+import time
 import pygame
 import pygame.freetype
 import sys
@@ -678,17 +679,90 @@ class GlobalState:
         mheaders = {'User-Agent': '1.2.0'}
         response = requests.get(url, headers=mheaders, params=params)
         print(response.text)
+        
+    def get_played_games(self, force_reload=False, verbose=False):
+        if self.all_games is None or force_reload:
+            try:
+                count = 50
+                offset = 0
+                url = 'https://retroachievements.org/API/API_GetUserRecentlyPlayedGames.php'
+                mheaders = {'User-Agent': '1.2.0'}
+                all_games = []
+                params = {'u': self.get_username(), 'y': self.api_key, 'c': count, 'o': offset}
+                while True:
+                    response = requests.get(url, params=params, headers=mheaders)
+                    games = response.json()
+                    if not games:
+                        break
+                    all_games.extend(games)
+                    if len(games) < count:
+                        break
+                    offset += count
+                    if verbose:
+                        render_text(f'Found {len(all_games)} games', (80, 80), FONT, TEXT_COLOR_ACTIVE)
+                        pygame.display.update()
+                        CLOCK.tick(FPS)
+                    time.sleep(0.1)
+                self.all_games = all_games                
+            except Exception as e:
+                self.print_error(["Error getting recently played games", f"{str(e)}"])
+                self.all_games = []
+        return self.all_games
 
     def get_uploaded_achievements(self, force_reload=False):
         if self.uploaded_achievements is None or force_reload:
             try:
-                url = f'https://retroachievements.org/API/API_GetUserRecentAchievements.php'
-                params = {'u': self.get_username(), 'z': self.api_username,
-                          'y': self.api_key, 'm': 10000000}
+                count = 50
+                offset = 0
+                url = 'https://retroachievements.org/API/API_GetUserRecentlyPlayedGames.php'
+                progress_url = f"https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php"
+
+                mheaders = {'User-Agent': '1.2.0'}
+                all_achievements = {}
+                params = {'u': self.get_username(), 'y': self.api_key, 'c': count, 'o': offset}
+                while True:
+                    response = requests.get(url, params=params, headers=mheaders)
+                    games = response.json()
+                    if not games:
+                        break
+                    for game in games:
+                        game_id = game.get('GameID')
+                        if not game_id:
+                            continue
+                        prog_params = {'u': self.get_username(), 'y': self.api_key, 'g': game_id}
+                        progress_response = requests.get(progress_url, headers=mheaders, params=prog_params)
+                        progress_data = progress_response.json()
+
+                        if "Achievements" in progress_data:
+                            achieved = {
+                                aid: ainfo for aid, ainfo in progress_data["Achievements"].items()
+                                if ainfo.get("DateEarned")
+                            }
+                            if achieved:
+                                all_achievements[game_id] = achieved
+                        time.sleep(0.01)  # don't bang the API too hard
+
+                    if len(games) < count:
+                        break
+                    offset += count
+                    time.sleep(0.1)
+                self.uploaded_achievements = all_achievements                
+            except Exception as e:
+                self.print_error(["Error getting unlocked achievements", f"{str(e)}"])
+                self.uploaded_achievements = []
+
+        return self.uploaded_achievements
+
+
+    def get_uploaded_achievements_legacy(self, force_reload=False):
+        if self.uploaded_achievements is None or force_reload:
+            try:
+                url = 'https://retroachievements.org/API/API_GetUserRecentAchievements.php'
+                params = {'u': self.get_username(), 'y': self.api_key, 'm': 10000000}
                 response = requests.get(url, params=params)
                 print(response.text)
                 if 'Service Temporarily Unavailable' in response.text:
-                    self.print_error([f"RetroAchievements API seems to be down"])
+                    self.print_error(["RetroAchievements API seems to be down"])
                     self.uploaded_achievements = []
                     return self.uploaded_achievements
                 achievements = json.loads(response.text)
@@ -698,7 +772,7 @@ class GlobalState:
                     cheevo_dict[cid] = achievements[i]
                 self.uploaded_achievements = cheevo_dict
             except Exception as e:
-                self.print_error([f"Error getting unlocked achievements", f"{str(e)}"])
+                self.print_error(["Error getting unlocked achievements", f"{str(e)}"])
                 self.uploaded_achievements = []
 
         return self.uploaded_achievements
@@ -744,6 +818,8 @@ def main():
     render_startscreen(state)
     # check if we can log in
     print(state.get_token())
+    
+    state.played_games = state.get_played_games(force_reload=True, verbose=True)
 
     state.unmatched_achievements = [x for x in state.get_unlocked_achievements() if
                                     x not in state.get_uploaded_achievements()]
