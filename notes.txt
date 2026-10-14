@@ -1,0 +1,7 @@
+#get recent games:
+https://retroachievements.org/API/API_GetUserRecentlyPlayedGames.php?z=ijustneedanapikey&y=o9RmEVAVdegyNMJm5eHr3w1qWpao6xFW&u=Louisvh&c=50
+# get "recent" games nr 50-100
+https://retroachievements.org/API/API_GetUserRecentlyPlayedGames.php?z=ijustneedanapikey&y=o9RmEVAVdegyNMJm5eHr3w1qWpao6xFW&u=Louisvh&c=50&o=50
+
+#get all achieved cheevos for specific game:
+wget -qO- --user-agent="1.2.0" 'https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?g=2022&u=Louisvh&z=ijustneedanapikey&y=o9RmEVAVdegyNMJm5eHr3w1qWpao6xFW'

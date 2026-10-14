@@ -175,16 +175,16 @@ class MainMenu:
                                    [FONT], TEXT_COLOR, TEXT_COLOR_ACTIVE, hover_bg_color=HOVER_BG_COLOR)
         self.start_button = Button(["Synchronize Achievements"], (320, 170),
                                    [FONT], TEXT_COLOR, TEXT_COLOR_ACTIVE, hover_bg_color=HOVER_BG_COLOR)
-        self.manual_button = Button(["Manual Cheevo ID entry"], (320, 240),
-                                  [FONT], TEXT_COLOR, TEXT_COLOR_ACTIVE, hover_bg_color=HOVER_BG_COLOR)
         self.hardcore_button = Button(["Enable Hardcore Mode"], (320, 310),
+                                  [FONT], TEXT_COLOR, TEXT_COLOR_ACTIVE, hover_bg_color=HOVER_BG_COLOR)
+        self.manual_button = Button(["Developer Tools"], (320, 240),
                                   [FONT], TEXT_COLOR, TEXT_COLOR_ACTIVE, hover_bg_color=HOVER_BG_COLOR)
         self.exit_button = Button(["Exit"], (320, 380),
                                   [FONT], TEXT_COLOR, TEXT_COLOR_ACTIVE, hover_bg_color=HOVER_BG_COLOR)
         self.buttons = [self.fetch_button,
                         self.start_button,
-                        self.manual_button,
                         self.hardcore_button,
+                        self.manual_button,
                         self.exit_button]
         self.selected_button_index = 0
 
@@ -245,6 +245,10 @@ class ManualEntry:
         self.digits = [Button(["0"], (180 + x, 330), [FONT], TEXT_COLOR, 'red')
                        for x in range(0, spacing * n_digits, spacing)]
         self.selected_digit = n_digits - 1
+        self.digits_visible = False
+        self.passcode_pointer = 0
+        self.passcode = [pygame.K_UP, pygame.K_UP, pygame.K_DOWN, pygame.K_DOWN, 
+                         pygame.K_LEFT, pygame.K_RIGHT, pygame.K_LEFT, pygame.K_RIGHT]
 
     def handle_events(self):
         for event in pygame.event.get():
@@ -252,21 +256,30 @@ class ManualEntry:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN:
-                if event.key in [pygame.K_UP]:
-                    self.digits[self.selected_digit].update_text([str((int(self.digits[self.selected_digit].text[0]) + 1) % 10)])
-                elif event.key in [pygame.K_DOWN]:
-                    self.digits[self.selected_digit].update_text([str((int(self.digits[self.selected_digit].text[0]) - 1) % 10)])
-                elif event.key in [pygame.K_LEFT]:
-                    if self.selected_digit > 0:
-                        self.selected_digit -= 1
-                elif event.key in [pygame.K_RIGHT]:
-                    if self.selected_digit < len(self.digits) - 1:
-                        self.selected_digit += 1
-                elif event.key in [pygame.K_RETURN, pygame.K_a]:
-                    cheevo_id = ''.join([digit.text[0] for digit in self.digits])
-                    self.state.manual_ids.append(cheevo_id)
-                    self.state.unmatched_achievements.append(cheevo_id)
-                    self.state.current_state = "SYNC_CHEEVOS"
+                if self.digits_visible:
+                    if event.key in [pygame.K_UP]:
+                        self.digits[self.selected_digit].update_text([str((int(self.digits[self.selected_digit].text[0]) + 1) % 10)])
+                    elif event.key in [pygame.K_DOWN]:
+                        self.digits[self.selected_digit].update_text([str((int(self.digits[self.selected_digit].text[0]) - 1) % 10)])
+                    elif event.key in [pygame.K_LEFT]:
+                        if self.selected_digit > 0:
+                            self.selected_digit -= 1
+                    elif event.key in [pygame.K_RIGHT]:
+                        if self.selected_digit < len(self.digits) - 1:
+                            self.selected_digit += 1
+                    elif event.key in [pygame.K_RETURN, pygame.K_a]:
+                        cheevo_id = ''.join([digit.text[0] for digit in self.digits])
+                        self.state.manual_ids.append(cheevo_id)
+                        self.state.unmatched_achievements.append(cheevo_id)
+                        self.state.current_state = "SYNC_CHEEVOS"
+                elif event.key in [pygame.K_b, pygame.K_x]:
+                    self.state.current_state = "MAIN_MENU"
+                else:
+                    if event.key == self.passcode[self.passcode_pointer]:
+                        self.passcode_pointer += 1
+                        if self.passcode_pointer == len(self.passcode):
+                            self.digits_visible = True
+                            self.passcode_pointer = 0
 
     def render(self):
         pygame.draw.rect(SCREEN, BANNER_COLOR, pygame.Rect((0, 0), (640, 50)))
